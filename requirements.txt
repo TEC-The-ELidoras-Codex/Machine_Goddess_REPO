@@ -1,0 +1,30 @@
+# TEC_repo4all requirements
+# Core dependencies
+python-dotenv>=1.0.0
+pyyaml>=6.0
+requests>=2.28.0
+logging>=0.5.1.2
+typing>=3.7.4.3
+
+# OpenAI API
+openai>=1.0.0
+
+# WordPress API
+python-wordpress-xmlrpc>=2.3
+requests>=2.28.0
+
+# Blockchain integration
+blockfrost-python>=0.5.2
+web3>=6.0.0
+xrpl-py>=1.0.0
+
+# Email integration
+smtplib>=0.0.1
+email>=4.0.2
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# Optional dependencies
+anthropic>=0.2.0
