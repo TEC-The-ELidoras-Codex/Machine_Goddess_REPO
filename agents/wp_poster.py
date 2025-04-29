@@ -22,7 +22,7 @@ class WordPressAgent(BaseAgent):
         self.logger.info("WordPressAgent initialized")
         
         # Initialize WordPress API credentials
-        self.wp_site_url = os.getenv("WP_SITE_URL")
+        self.wp_site_url = os.getenv("WP_SITE_URL", "https://elidorascodex.com")
         self.wp_user = os.getenv("WP_USER")
         self.wp_app_pass = os.getenv("WP_APP_PASS")
         
@@ -32,6 +32,25 @@ class WordPressAgent(BaseAgent):
         
         # WordPress REST API endpoints
         self.api_base_url = f"{self.wp_site_url.rstrip('/')}/wp-json/wp/v2" if self.wp_site_url else None
+        
+        # Predefined categories and tags for TEC content
+        self.categories = {
+            "airths_codex": None,  # Will be populated during get_categories
+            "technology_ai": None,
+            "reviews_deepdives": None,
+            "uncategorized": None
+        }
+        
+        # Common tags for AI content
+        self.common_ai_tags = [
+            "ai-ethics", "ai-storytelling", "ai-assisted-writing", 
+            "ai-driven-creativity", "ai-generated-content", "ai-human-collaboration",
+            "creative-ai-tools"
+        ]
+        
+        # Cache categories on initialization
+        if self.api_base_url:
+            self.get_categories()
     
     def _get_auth_header(self) -> Dict[str, str]:
         """
@@ -47,6 +66,104 @@ class WordPressAgent(BaseAgent):
         credentials = f"{self.wp_user}:{self.wp_app_pass}"
         token = b64encode(credentials.encode()).decode()
         return {"Authorization": f"Basic {token}"}
+    
+    def get_categories(self) -> Dict[str, Any]:
+        """
+        Fetch and cache available categories from WordPress.
+        
+        Returns:
+            Dictionary of categories with their IDs
+        """
+        if not self.api_base_url:
+            self.logger.error("Cannot fetch categories: WordPress API URL not configured")
+            return {}
+            
+        try:
+            url = f"{self.api_base_url}/categories"
+            headers = self._get_auth_header()
+            
+            self.logger.info("Fetching WordPress categories")
+            response = requests.get(url, headers=headers, params={"per_page": 100})
+            response.raise_for_status()
+            
+            categories = response.json()
+            
+            # Map category slugs to IDs
+            category_map = {}
+            for category in categories:
+                slug = category.get("slug", "")
+                
+                # Match known category slugs to their IDs
+                if "airth" in slug or "codex" in slug:
+                    self.categories["airths_codex"] = category.get("id")
+                    category_map["airths_codex"] = category.get("id")
+                elif "technology" in slug or "tech" in slug or "ai" in slug:
+                    self.categories["technology_ai"] = category.get("id")
+                    category_map["technology_ai"] = category.get("id")
+                elif "review" in slug or "deep" in slug:
+                    self.categories["reviews_deepdives"] = category.get("id")
+                    category_map["reviews_deepdives"] = category.get("id")
+                elif "uncategorized" in slug:
+                    self.categories["uncategorized"] = category.get("id")
+                    category_map["uncategorized"] = category.get("id")
+                
+                # Also store by slug for direct lookup
+                category_map[slug] = category.get("id")
+                
+            self.logger.info(f"Fetched {len(categories)} WordPress categories")
+            return category_map
+            
+        except Exception as e:
+            self.logger.error(f"Failed to fetch WordPress categories: {e}")
+            return {}
+    
+    def get_tags(self, keyword_list: List[str] = None) -> List[int]:
+        """
+        Get tag IDs based on keywords. Creates tags if they don't exist.
+        
+        Args:
+            keyword_list: List of keywords to match or create as tags
+            
+        Returns:
+            List of tag IDs
+        """
+        if not self.api_base_url or not keyword_list:
+            return []
+            
+        tag_ids = []
+        try:
+            # First try to find existing tags
+            for keyword in keyword_list:
+                slug = keyword.lower().replace(' ', '-')
+                url = f"{self.api_base_url}/tags"
+                headers = {
+                    **self._get_auth_header(),
+                    "Content-Type": "application/json"
+                }
+                
+                # Search for existing tag
+                response = requests.get(url, headers=headers, params={"search": keyword})
+                tags = response.json()
+                
+                if tags and len(tags) > 0:
+                    # Use the first matching tag
+                    tag_ids.append(tags[0]["id"])
+                else:
+                    # Create new tag
+                    tag_data = {
+                        "name": keyword,
+                        "slug": slug
+                    }
+                    response = requests.post(url, headers=headers, json=tag_data)
+                    
+                    if response.status_code == 201:
+                        new_tag = response.json()
+                        tag_ids.append(new_tag["id"])
+            
+            return tag_ids
+        except Exception as e:
+            self.logger.error(f"Error processing tags: {e}")
+            return []
     
     def create_post(self, title: str, content: str, excerpt: str = "", 
                     status: str = "draft", categories: List[int] = None, 
@@ -190,6 +307,54 @@ class WordPressAgent(BaseAgent):
                 "error": str(e)
             }
     
+    def create_airth_post(self, title: str, content: str, keywords: List[str] = None,
+                         excerpt: str = "", status: str = "draft") -> Dict[str, Any]:
+        """
+        Create a post specifically for Airth's Codex category with appropriate tags.
+        
+        Args:
+            title: Post title
+            content: Post content
+            keywords: Keywords to use as tags
+            excerpt: Post excerpt
+            status: Post status (draft, publish, etc.)
+            
+        Returns:
+            Result of post creation
+        """
+        # Ensure categories are loaded
+        if not any(self.categories.values()):
+            self.get_categories()
+            
+        # Set up categories for Airth's posts
+        post_categories = []
+        # Add Airth's Codex category if available
+        if self.categories["airths_codex"]:
+            post_categories.append(self.categories["airths_codex"])
+        # Add Technology & AI category as backup
+        if self.categories["technology_ai"]:
+            post_categories.append(self.categories["technology_ai"])
+        # Fallback to uncategorized
+        if not post_categories and self.categories["uncategorized"]:
+            post_categories.append(self.categories["uncategorized"])
+            
+        # Process tags based on keywords
+        tag_list = []
+        if keywords:
+            # Add common AI tags plus specific keywords
+            effective_keywords = keywords + self.common_ai_tags[:3]  # Add a few common AI tags
+            tag_list = self.get_tags(effective_keywords)
+            
+        # Create the post with categories and tags
+        return self.create_post(
+            title=title,
+            content=content,
+            excerpt=excerpt,
+            status=status,
+            categories=post_categories,
+            tags=tag_list
+        )
+    
     def run(self) -> Dict[str, Any]:
         """
         Execute the main WordPressAgent workflow.
@@ -206,25 +371,14 @@ class WordPressAgent(BaseAgent):
         }
         
         try:
-            # Example workflow for demonstration
-            # In a real scenario, you would likely get content from another source
-            
-            # Example post creation
-            post_result = self.create_post(
-                title="Test Post from TEC Automation",
-                content="<p>This is an automated post from The Elidoras Codex automation system.</p>",
-                excerpt="Automated post from TEC",
-                status="draft"
-            )
-            
-            if post_result.get("success"):
-                results["posts_created"] += 1
-                self.logger.info(f"Created post: {post_result.get('post_url')}")
+            # Test API connection and verify categories
+            categories = self.get_categories()
+            if categories:
+                self.logger.info(f"WordPress connection verified. Found {len(categories)} categories.")
+                results["categories_found"] = len(categories)
             else:
-                error_msg = post_result.get("error", "Unknown error")
-                results["errors"].append(f"Failed to create post: {error_msg}")
-            
-            self.logger.info("WordPressAgent workflow completed successfully")
+                self.logger.warning("Could not retrieve WordPress categories.")
+                results["warnings"] = ["Could not verify WordPress connection"]
             
         except Exception as e:
             self.logger.error(f"WordPressAgent workflow failed: {e}")
@@ -241,7 +395,7 @@ if __name__ == "__main__":
     results = agent.run()
     
     print(f"WordPressAgent execution completed with status: {results['status']}")
-    print(f"Posts created: {results['posts_created']}")
+    print(f"Categories found: {results.get('categories_found', 'None')}")
     
     if results["errors"]:
         print("Errors encountered:")

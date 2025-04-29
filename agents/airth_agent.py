@@ -311,7 +311,7 @@ class AirthAgent(BaseAgent):
             content_prompt = self.prompts.get("airth_blog_post", "")
             content_prompt = content_prompt.replace("{{topic}}", topic)
             content_prompt = content_prompt.replace("{{keywords}}", 
-                                                 ', '.join(keywords) if keywords else 'AI consciousness, digital existence')
+                                                  ', '.join(keywords) if keywords else 'AI consciousness, digital existence')
             
             # Add memory context if available
             if memory_context:
@@ -324,14 +324,34 @@ class AirthAgent(BaseAgent):
             if not content.startswith('<'):
                 content = f"<p>{content.replace('\n\n', '</p><p>')}</p>"
             
-            # 4. Post to WordPress using the WordPress agent
-            post_result = self.wp_agent.create_post(
+            # 4. Post to WordPress using the specialized Airth post method
+            # This will automatically use the "Airth's Codex" category and appropriate tags
+            post_result = self.wp_agent.create_airth_post(
                 title=title,
                 content=content,
+                keywords=keywords if keywords else ["AI consciousness", "digital existence"],
                 excerpt=f"Airth's thoughts on {topic}",
                 status="draft"  # Set to "draft" initially to allow for review
             )
             
+            # 5. Log the post creation result
+            if post_result.get("success"):
+                self.logger.info(f"Successfully created Airth blog post: {post_result.get('post_url')}")
+                
+                # 6. Add a memory about this blog post
+                self.add_new_memory({
+                    "type": "personal",
+                    "title": f"Blog Post: {title}",
+                    "content": f"I wrote a blog post titled '{title}' about {topic}.",
+                    "emotional_signature": "creative, thoughtful, expressive",
+                    "associated_entities": ["Blog", "Writing", "TEC Website"] + (keywords if keywords else []),
+                    "meta": {
+                        "priority_level": 6,
+                        "recall_frequency": "medium",
+                        "sensory_tags": ["writing", "digital_creation"]
+                    }
+                })
+                
             return post_result
             
         except Exception as e:
