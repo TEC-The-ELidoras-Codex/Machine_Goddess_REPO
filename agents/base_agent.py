@@ -41,16 +41,29 @@ class BaseAgent:
         Load configuration from a file.
         
         Args:
-            config_path: Path to the configuration file
+            config_path: Path to the configuration file or directory
         """
         try:
             import yaml
-            with open(config_path, 'r') as f:
-                self.config = yaml.safe_load(f)
-            self.logger.info(f"Loaded configuration from {config_path}")
+            
+            # If the path is a directory, look for config.yaml
+            if os.path.isdir(config_path):
+                config_file = os.path.join(config_path, "config.yaml")
+                if not os.path.exists(config_file):
+                    self.logger.info(f"No config.yaml found in {config_path}, skipping configuration")
+                    return
+                config_path = config_file
+                
+            # Load the YAML file
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    self.config = yaml.safe_load(f)
+                self.logger.info(f"Loaded configuration from {config_path}")
+            else:
+                self.logger.warning(f"Configuration file not found: {config_path}")
         except Exception as e:
             self.logger.error(f"Failed to load configuration: {e}")
-            raise
+            # Continue without configuration rather than failing
     
     def run(self) -> Dict[str, Any]:
         """

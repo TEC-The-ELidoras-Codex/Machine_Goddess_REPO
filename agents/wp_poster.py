@@ -22,9 +22,10 @@ class WordPressAgent(BaseAgent):
         self.logger.info("WordPressAgent initialized")
         
         # Initialize WordPress API credentials
-        self.wp_site_url = os.getenv("WP_SITE_URL", "https://elidorascodex.com")
+        # Support both naming conventions for compatibility
+        self.wp_site_url = os.getenv("WP_SITE_URL") or os.getenv("WP_URL", "https://elidorascodex.com")
         self.wp_user = os.getenv("WP_USER")
-        self.wp_app_pass = os.getenv("WP_APP_PASS")
+        self.wp_app_pass = os.getenv("WP_APP_PASS") or os.getenv("WP_PASS")
         
         # Check for required environment variables
         if not self.wp_site_url or not self.wp_user or not self.wp_app_pass:
