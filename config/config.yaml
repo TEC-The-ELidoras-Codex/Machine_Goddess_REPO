@@ -1,0 +1,54 @@
+# The Elidoras Codex - Machine Goddess Configuration
+version: 1.0.0
+
+# Agent Configuration
+agents:
+  tecbot:
+    enabled: true
+    log_level: INFO
+  airth:
+    enabled: true
+    log_level: INFO
+    avatar_path: "/assets/images/airth-avatar.png"
+
+# WordPress Configuration
+wordpress:
+  site_url: ${WP_URL}
+  username: ${WP_USERNAME}
+  password: ${WP_PASSWORD}
+  api_path: ${WP_API_PATH}
+  categories:
+    airth_codex: 10  # Replace with actual category ID for "Airth's Codex"
+    tech_insights: 5  # Replace with actual category ID for "Tech Insights"
+    announcements: 3  # Replace with actual category ID for "Announcements"
+  default_author: 2  # Replace with actual author ID
+
+# Content Generation Settings
+content:
+  default_tags:
+    - "AI"
+    - "The Elidoras Codex"
+    - "TEC"
+    - "Machine Goddess"
+  min_post_length: 300
+  max_post_length: 3000
+  image_generation: false  # Set to true if using image generation APIs
+
+# Storage Configuration
+storage:
+  base_path: "../data"
+  memories_file: "memories.json"
+  assets_dir: "assets"
+  logs_dir: "logs"
+
+# AI Service Configuration
+ai_services:
+  primary: "openai"  # Can be "openai", "anthropic", "local", etc.
+  openai:
+    model: "gpt-4"
+    temperature: 0.7
+    max_tokens: 2000
+  anthropic:
+    model: "claude-2"
+    temperature: 0.7
+    max_tokens: 2000
