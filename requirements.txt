@@ -17,9 +17,8 @@ blockfrost-python>=0.5.2
 web3>=6.0.0
 xrpl-py>=1.0.0
 
+# Removed email as it conflicts with Python's standard library module
 # Email integration
-smtplib>=0.0.1
-email>=4.0.2
 
 # Testing
 pytest>=7.0.0
