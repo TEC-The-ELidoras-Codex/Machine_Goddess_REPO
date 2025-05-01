@@ -1,0 +1,32 @@
+name: WordPress Auto Post
+
+on:
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+  schedule:
+    - cron: '0 12 * * *' # Runs every day at 12:00 UTC (optional, remove if not needed)
+
+jobs:
+  post-to-wordpress:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create .env file from secrets
+        run: |
+          echo "WP_SITE_URL=${{ secrets.WP_SITE_URL }}" >> config/.env
+          echo "WP_USER=${{ secrets.WP_USER }}" >> config/.env
+          echo "WP_APP_PASS=${{ secrets.WP_APP_PASS }}" >> config/.env
+          # Add any other secrets you need here
+
+      - name: Run WordPress posting script
+        run: python scripts/direct_wordpress_post.py
