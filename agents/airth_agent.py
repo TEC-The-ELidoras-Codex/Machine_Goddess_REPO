@@ -7,7 +7,16 @@ import json
 import logging
 from typing import Dict, Any, List, Optional
 import random
-import openai
+import sys
+# Add parent directory to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+# Now import openai - using try/except for compatibility
+try:
+    import openai
+    from openai import OpenAI
+except ImportError:
+    print("ERROR: OpenAI module not found. Please run 'pip install openai' to install it.")
+    openai = None
 from datetime import datetime
 from dotenv import load_dotenv
 load_dotenv()

@@ -28,8 +28,9 @@ class BaseAgent:
         self.logger = logging.getLogger(f"TEC.{name}")
         self.logger.info(f"Initializing {name} agent")
         
-        # Load environment variables
-        load_dotenv()
+        # Load environment variables from the specific path
+        env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', '.env')
+        load_dotenv(env_path, override=True)
         
         # Load configuration if provided
         self.config = {}
