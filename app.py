@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 
 # Load environment variables from config/.env
+
 load_dotenv(os.path.join('config', '.env'))
 
 def greet(name):
