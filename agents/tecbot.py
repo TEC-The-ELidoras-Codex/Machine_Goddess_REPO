@@ -6,8 +6,11 @@ import os
 import json
 import logging
 from typing import Dict, Any, List, Optional
+from dotenv import load_dotenv
 
 from .base_agent import BaseAgent
+
+load_dotenv()
 
 class TECBot(BaseAgent):
     """
