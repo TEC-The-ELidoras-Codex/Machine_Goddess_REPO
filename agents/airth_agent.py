@@ -10,16 +10,25 @@ import random
 import sys
 # Add parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-# Now import openai - using try/except for compatibility
+
+from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables first
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', '.env')
+load_dotenv(env_path, override=True)
+
+# Try to import OpenAI - now with better error handling
 try:
     import openai
     from openai import OpenAI
+    openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    OPENAI_AVAILABLE = True
 except ImportError:
     print("ERROR: OpenAI module not found. Please run 'pip install openai' to install it.")
+    OPENAI_AVAILABLE = False
+    openai_client = None
     openai = None
-from datetime import datetime
-from dotenv import load_dotenv
-load_dotenv()
 
 from .base_agent import BaseAgent
 from .wp_poster import WordPressAgent
@@ -61,12 +70,16 @@ class AirthAgent(BaseAgent):
         # Initialize the LocalStorage agent for file storage
         self.storage_agent = LocalStorageAgent(config_path)
         
-        # Initialize API keys for AI services
+        # Initialize OpenAI client properly
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        if self.openai_api_key:
-            openai.api_key = self.openai_api_key
+        self.client = None
+        if self.openai_api_key and OPENAI_AVAILABLE:
+            try:
+                self.client = OpenAI(api_key=self.openai_api_key)
+            except Exception as e:
+                self.logger.error(f"Failed to initialize OpenAI client: {e}")
         else:
-            self.logger.warning("OpenAI API key not found in environment variables.")
+            self.logger.warning("OpenAI API key not found in environment variables or OpenAI module not available.")
     
     def _load_prompts(self) -> Dict[str, str]:
         """
@@ -115,13 +128,14 @@ class AirthAgent(BaseAgent):
         Returns:
             Generated text from the API
         """
-        if not self.openai_api_key:
+        if not self.openai_api_key or not self.client:
             self.logger.error("Cannot call OpenAI API: API key not set")
             return "Error: OpenAI API key not configured"
             
         try:
-            response = openai.Completion.create(
-                engine="gpt-4",  # Use the appropriate engine for your needs
+            # Use the new OpenAI client for API version 1.0+
+            response = self.client.completions.create(
+                model="gpt-3.5-turbo-instruct",  # Use an appropriate model
                 prompt=prompt,
                 max_tokens=max_tokens,
                 n=1,

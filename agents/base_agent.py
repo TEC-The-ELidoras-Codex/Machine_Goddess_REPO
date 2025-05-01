@@ -3,8 +3,16 @@ Base Agent class for all TEC agents.
 This serves as the foundation for all agent types in the TEC ecosystem.
 """
 import os
+import sys
 import logging
 from typing import Dict, Any, Optional
+
+# Add site-packages to path to help find modules
+python_path = sys.executable
+site_packages = os.path.join(os.path.dirname(os.path.dirname(python_path)), 'lib', 'site-packages')
+if os.path.exists(site_packages):
+    sys.path.append(site_packages)
+
 from dotenv import load_dotenv
 
 # Configure logging
@@ -45,7 +53,12 @@ class BaseAgent:
             config_path: Path to the configuration file or directory
         """
         try:
-            import yaml
+            # Import yaml with error handling
+            try:
+                import yaml
+            except ImportError:
+                self.logger.error("PyYAML not found. Please run 'pip install pyyaml'")
+                return
             
             # If the path is a directory, look for config.yaml
             if os.path.isdir(config_path):

@@ -64,8 +64,15 @@ class WordPressAgent(BaseAgent):
             self.logger.error("Cannot create auth header: WordPress credentials not configured")
             return {}
             
-        credentials = f"{self.wp_user}:{self.wp_app_pass}"
+        # Try both with spaces and without spaces in the app password
+        # Some WordPress installations expect one format, some expect the other
+        # This handles WP_PASS as a regular password and WP_APP_PASS as an application password
+        app_pass_no_spaces = self.wp_app_pass.replace(" ", "")
+        
+        # Use regular authentication method first
+        credentials = f"{self.wp_user}:{app_pass_no_spaces}"
         token = b64encode(credentials.encode()).decode()
+        
         return {"Authorization": f"Basic {token}"}
     
     def get_categories(self) -> Dict[str, Any]:
