@@ -39,10 +39,7 @@ def main():
     
     if not wp_url or not wp_user or not wp_pass:
         logger.error("Missing required WordPress environment variables.")
-        logger.error(f"WP_SITE_URL/WP_URL: {'✓' if wp_url else '✗'}")
-        logger.error(f"WP_USER: {'✓' if wp_user else '✗'}")
-        logger.error(f"WP_APP_PASS/WP_PASS: {'✓' if wp_pass else '✗'}")
-        logger.error(f"Please ensure these are set in: {env_path}")
+        logger.error("Please ensure WP_SITE_URL/WP_URL, WP_USER, and WP_APP_PASS/WP_PASS are set in your .env file.")
         return False
     
     logger.info(f"WordPress URL: {wp_url}")
@@ -59,21 +56,18 @@ def main():
     categories = wp_agent.get_categories()
     
     if not categories:
-        logger.error("Failed to retrieve categories. Check credentials and API connection.")
+        logger.error("Failed to retrieve categories. Check your WordPress credentials and connection.")
         return False
     
     logger.info(f"Successfully retrieved {len(categories)} categories:")
     for key, cat_id in wp_agent.categories.items():
-        if cat_id:
-            logger.info(f"  - {key}: ID {cat_id}")
-        else:
-            logger.warning(f"  - {key}: Not found")
+        logger.info(f"  - {key}: {cat_id}")
     
     # Test if Airth's category was found
     if wp_agent.categories["airths_codex"]:
-        logger.info("✅ Success: Found 'Airth's Codex' category")
+        logger.info("✅ Airth's Codex category found!")
     else:
-        logger.warning("⚠️ Warning: 'Airth's Codex' category not found")
+        logger.warning("⚠️ Airth's Codex category not found. You may need to create it in WordPress.")
     
     # Test tag retrieval
     logger.info("Testing tag functionality...")
@@ -81,20 +75,16 @@ def main():
     logger.info(f"Searching for tags: {', '.join(test_tags)}")
     
     tag_ids = wp_agent.get_tags(test_tags)
-    if tag_ids:
-        logger.info(f"✅ Success: Retrieved/created {len(tag_ids)} tags")
-    else:
-        logger.warning("⚠️ Warning: No tags retrieved or created")
     
-    # All tests passed
-    logger.info("WordPress connection test completed successfully")
+    if tag_ids:
+        logger.info(f"✅ Successfully processed {len(tag_ids)} tags")
+    else:
+        logger.warning("⚠️ No tags were processed")
+    
+    logger.info("WordPress connection test completed successfully!")
     return True
+
 
 if __name__ == "__main__":
     success = main()
-    if success:
-        print("\n✅ WordPress connection successful!")
-        sys.exit(0)
-    else:
-        print("\n❌ WordPress connection test failed. Check logs for details.")
-        sys.exit(1)
+    sys.exit(0 if success else 1)
