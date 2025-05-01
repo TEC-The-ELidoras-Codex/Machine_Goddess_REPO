@@ -9,6 +9,8 @@ from typing import Dict, Any, List, Optional
 import random
 import openai
 from datetime import datetime
+from dotenv import load_dotenv
+load_dotenv()
 
 from .base_agent import BaseAgent
 from .wp_poster import WordPressAgent
