@@ -56,18 +56,20 @@ class WordPressAgent(BaseAgent):
     def _get_auth_header(self) -> Dict[str, str]:
         """
         Get the authorization header for WordPress API requests.
-        Using exact working token from manual API test.
+        Specifically handles WordPress.com application passwords.
         
         Returns:
             Dictionary containing the Authorization header
         """
-        # Use the exact working token that was proven to work in API tests
-        # This is from the successful Authorization header:
-        # Basic ZWxpZG9yYXNjb2RleDpxUmlIREcmTTE1MVdscEdycW5qITcybnE=
-        return {
-            "Authorization": "Basic ZWxpZG9yYXNjb2RleDpxUmlIREcmTTE1MVdscEdycW5qITcybnE=",
-            "Content-Type": "application/json"
-        }
+        if not self.wp_user or not self.wp_app_pass:
+            self.logger.error("Cannot create auth header: WordPress credentials not configured")
+            return {}
+            
+        # Handle application passwords with spaces (don't strip spaces for WordPress.com)
+        credentials = f"{self.wp_user}:{self.wp_app_pass}"
+        token = b64encode(credentials.encode()).decode()
+        
+        return {"Authorization": f"Basic {token}"}
     
     def get_categories(self) -> Dict[str, Any]:
         """
