@@ -78,4 +78,3 @@ T\ in TEC.
 ---
 
 **Note:** Consistency is key. Applying these elements consistently will build a strong, recognizable brand identity for TEC.
-
