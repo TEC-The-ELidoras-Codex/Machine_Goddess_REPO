@@ -37,11 +37,20 @@ def create_virtual_environment():
 
 def install_requirements():
     """Install requirements from requirements.txt."""
-    pip_cmd = "venv\\Scripts\\pip" if platform.system() == "Windows" else "venv/bin/pip"
+    if platform.system() == "Windows":
+        pip_cmd = os.path.join("venv", "Scripts", "pip")
+        python_cmd = os.path.join("venv", "Scripts", "python")
+    else:
+        pip_cmd = os.path.join("venv", "bin", "pip")
+        python_cmd = os.path.join("venv", "bin", "python")
     
     print("Installing requirements...")
     try:
-        subprocess.check_call([pip_cmd, "install", "--upgrade", "pip"])
+        # Use python -m pip instead of pip directly for upgrading pip
+        subprocess.check_call([python_cmd, "-m", "pip", "install", "--upgrade", "pip"])
+        print("✅ Pip upgraded successfully")
+        
+        # Now install the requirements
         subprocess.check_call([pip_cmd, "install", "-r", "requirements.txt"])
         print("✅ Requirements installed successfully")
         return True
