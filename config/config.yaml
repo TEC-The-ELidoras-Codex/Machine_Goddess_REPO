@@ -13,9 +13,9 @@ agents:
 
 # WordPress Configuration
 wordpress:
-  site_url: ${WP_URL}
-  username: ${WP_USERNAME}
-  password: ${WP_PASSWORD}
+  site_url: ${WP_SITE_URL}
+  username: ${WP_USER}
+  password: ${WP_APP_PASS}
   api_path: ${WP_API_PATH}
   categories:
     airth_codex: 10  # Replace with actual category ID for "Airth's Codex"
