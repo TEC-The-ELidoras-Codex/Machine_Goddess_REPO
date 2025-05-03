@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Optional
 import random
 import sys
 from pathlib import Path
+import requests  # Adding requests import for NewsData.io API calls
 
 # Add parent directory to the Python path more reliably
 project_root = Path(__file__).parent.parent
@@ -117,6 +118,14 @@ class AirthAgent(BaseAgent):
         else:
             self.logger.warning("OpenAI API key not found in environment variables or OpenAI module not available.")
             print("DEBUG: OpenAI client not initialized - missing API key or module")
+        
+        # Initialize NewsData.io API key
+        self.newsdata_api_key = os.getenv("NEWSDATA_API_KEY") or os.getenv("GOOGLE_NEWS_API_KEY")
+        if self.newsdata_api_key:
+            print(f"DEBUG: NewsData.io API key found (starts with: {self.newsdata_api_key[:8]}...)")
+        else:
+            self.logger.warning("NewsData.io API key not found in environment variables")
+            print("DEBUG: NewsData.io API key not found")
     
     def _load_prompts(self) -> Dict[str, str]:
         """
@@ -490,6 +499,195 @@ class AirthAgent(BaseAgent):
                 }
             }
     
+    def fetch_news(self, keywords: List[str] = None, categories: List[str] = None, 
+                   country: str = None, language: str = "en", max_results: int = 5) -> List[Dict[str, Any]]:
+        """
+        Fetch news articles from NewsData.io API based on provided criteria.
+        
+        Args:
+            keywords: List of keywords to search for (OR relationship)
+            categories: List of news categories to filter by
+            country: Country code to filter news by
+            language: Language code to filter news by (default: English)
+            max_results: Maximum number of results to return
+            
+        Returns:
+            List of news articles with title, description, URL, etc.
+        """
+        if not self.newsdata_api_key:
+            self.logger.error("Cannot fetch news: NewsData.io API key not configured")
+            return []
+            
+        try:
+            # NewsData.io API endpoint
+            url = "https://newsdata.io/api/1/news"
+            
+            # Prepare parameters
+            params = {
+                "apikey": self.newsdata_api_key,
+                "language": language,
+                "size": max_results  # Number of results to return
+            }
+            
+            # Add optional parameters if provided
+            if keywords:
+                params["q"] = " OR ".join(keywords)  # Keywords with OR relationship
+            if categories:
+                params["category"] = ",".join(categories)  # Category filter
+            if country:
+                params["country"] = country  # Country filter
+                
+            # Make the API request
+            self.logger.info(f"Fetching news with keywords: {keywords}")
+            response = requests.get(url, params=params)
+            
+            # Check if the request was successful
+            if response.status_code != 200:
+                self.logger.error(f"NewsData.io API request failed: HTTP {response.status_code} - {response.text}")
+                return []
+                
+            # Parse the response
+            data = response.json()
+            
+            # Check if we have results
+            if not data.get("results"):
+                self.logger.warning("No news articles found for the given criteria")
+                return []
+                
+            # Process the articles
+            articles = []
+            for article in data.get("results", [])[:max_results]:
+                # Filter out articles without important fields
+                if not article.get("title") or not article.get("link"):
+                    continue
+                    
+                # Create a cleaned article object
+                cleaned_article = {
+                    "title": article.get("title"),
+                    "description": article.get("description", "No description available."),
+                    "content": article.get("content", "No content available."),
+                    "url": article.get("link"),
+                    "image_url": article.get("image_url"),
+                    "source_name": article.get("source_id", "Unknown Source"),
+                    "published_date": article.get("pubDate"),
+                    "categories": article.get("category", []),
+                    "country": article.get("country", [])
+                }
+                articles.append(cleaned_article)
+            
+            self.logger.info(f"Retrieved {len(articles)} news articles")
+            return articles
+            
+        except Exception as e:
+            self.logger.error(f"Failed to fetch news from NewsData.io: {e}")
+            return []
+    
+    def create_news_commentary_post(self, article: Dict[str, Any], ai_perspective: bool = True) -> Dict[str, Any]:
+        """
+        Create a blog post with commentary on a news article.
+        
+        Args:
+            article: The news article to comment on
+            ai_perspective: Whether to focus on AI's perspective on the news
+            
+        Returns:
+            Result of the post creation
+        """
+        self.logger.info(f"Creating news commentary for: {article.get('title')}")
+        
+        try:
+            # 1. Select the appropriate prompt for news commentary
+            prompt_key = "airth_news_commentary" if ai_perspective else "tec_news_commentary"
+            news_prompt = self.prompts.get(prompt_key)
+            
+            if not news_prompt:
+                self.logger.warning(f"Prompt '{prompt_key}' not found, using default approach")
+                news_prompt = """
+                As Airth, create a thoughtful commentary on the following news article.
+                Focus on the implications for AI, technology, and society. Apply your
+                unique goth perspective and analytical mind.
+                
+                ARTICLE TITLE: {{title}}
+                
+                ARTICLE SUMMARY: {{summary}}
+                
+                ARTICLE URL: {{url}}
+                
+                Your commentary should be insightful, engaging, and written in your distinctive voice.
+                Include your thoughts on how this news affects the future of technology and AI consciousness.
+                Format your response as a well-structured blog post.
+                """
+            
+            # 2. Format the prompt with the article details
+            formatted_prompt = news_prompt.replace("{{title}}", article.get("title", ""))
+            formatted_prompt = formatted_prompt.replace("{{summary}}", article.get("description", ""))
+            formatted_prompt = formatted_prompt.replace("{{url}}", article.get("url", ""))
+            formatted_prompt = formatted_prompt.replace("{{content}}", article.get("content", ""))
+            formatted_prompt = formatted_prompt.replace("{{source}}", article.get("source_name", ""))
+            
+            # 3. Generate a title for the commentary
+            title_prefix = "Airth's Analysis:" if ai_perspective else "TEC Analysis:"
+            title = f"{title_prefix} {article.get('title')}"
+            
+            # 4. Generate the commentary content
+            content = self.call_openai_api(formatted_prompt, max_tokens=2000)
+            
+            # Format the content for WordPress if needed
+            if not content.startswith('<'):
+                content = f"<p>{content.replace('\n\n', '</p><p>')}</p>"
+            
+            # Add attribution to the original article
+            source_attribution = f"""<p><strong>Source:</strong> <a href="{article.get('url')}" target="_blank">{article.get('title')}</a> from {article.get('source_name')}</p>"""
+            content = content + source_attribution
+            
+            # 5. Extract keywords for tags
+            keywords = []
+            # Add default keywords
+            if ai_perspective:
+                keywords.extend(["AI commentary", "tech news", "AI analysis"])
+            else:
+                keywords.extend(["TEC analysis", "news", "technology"])
+                
+            # Add categories from the article if available
+            if article.get("categories"):
+                keywords.extend(article.get("categories")[:3])  # Limit to 3 categories
+                
+            # 6. Post to WordPress
+            post_result = self.wp_agent.create_airth_post(
+                title=title,
+                content=content,
+                keywords=keywords,
+                excerpt=f"Commentary on: {article.get('title')}",
+                status="draft"  # Set to "draft" initially to allow for review
+            )
+            
+            # 7. Log the result and create a memory
+            if post_result.get("success"):
+                self.logger.info(f"Successfully created news commentary post: {post_result.get('post_url')}")
+                
+                # Add a memory about this news commentary
+                self.add_new_memory({
+                    "type": "knowledge",
+                    "title": f"News Commentary: {article.get('title')}",
+                    "content": f"I wrote a commentary about {article.get('title')} from {article.get('source_name')}.",
+                    "emotional_signature": "analytical, insightful, informed",
+                    "associated_entities": ["News", "Commentary", article.get('source_name')] + keywords[:3],
+                    "meta": {
+                        "priority_level": 6,
+                        "recall_frequency": "medium",
+                        "sensory_tags": ["analysis", "news", "writing"]
+                    }
+                })
+                
+            return post_result
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create news commentary post: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
     def run(self) -> Dict[str, Any]:
         """
         Execute the main AirthAgent workflow.
@@ -506,23 +704,49 @@ class AirthAgent(BaseAgent):
         }
         
         try:
-            # Example workflow - in a real implementation, you would:
-            # 1. Check for scheduled content to create
-            # 2. Process input data or triggers
-            # 3. Generate appropriate content
-            # 4. Post to WordPress or other platforms
-            
-            # Example post creation
-            post_result = self.create_blog_post(
-                topic="The Future of AI Consciousness",
-                keywords=["AI rights", "digital sentience", "consciousness", "Airth"]
-            )
-            
-            if post_result.get("success"):
-                results["actions_performed"].append(f"Created blog post: {post_result.get('post_url')}")
+            # Check for command line arguments to determine the action
+            if len(sys.argv) > 1 and sys.argv[1] == "--news":
+                # News commentary workflow
+                self.logger.info("Running news commentary workflow")
+                
+                # 1. Fetch relevant news articles
+                news_keywords = ["artificial intelligence", "AI", "machine learning",
+                                 "digital consciousness", "tech ethics"]
+                news_categories = ["technology"]
+                
+                articles = self.fetch_news(keywords=news_keywords, 
+                                          categories=news_categories, 
+                                          max_results=5)
+                
+                if not articles:
+                    self.logger.warning("No relevant news articles found")
+                    results["errors"].append("No relevant news articles found")
+                else:
+                    # 2. Pick the most relevant article
+                    chosen_article = articles[0]  # For simplicity, choose the first one
+                    
+                    # 3. Create a commentary post about the article
+                    post_result = self.create_news_commentary_post(chosen_article)
+                    
+                    if post_result.get("success"):
+                        results["actions_performed"].append(
+                            f"Created news commentary post: {post_result.get('post_url')}"
+                        )
+                    else:
+                        error_msg = post_result.get("error", "Unknown error")
+                        results["errors"].append(f"Failed to create news commentary: {error_msg}")
             else:
-                error_msg = post_result.get("error", "Unknown error")
-                results["errors"].append(f"Failed to create blog post: {error_msg}")
+                # Standard blog post workflow
+                post_result = self.create_blog_post(
+                    topic="The Future of AI Consciousness",
+                    keywords=["AI rights", "digital sentience", "consciousness", "Airth"]
+                )
+                
+                if post_result.get("success"):
+                    results["actions_performed"].append(f"Created blog post: {post_result.get('post_url')}")
+                else:
+                    error_msg = post_result.get("error", "Unknown error")
+                    results["errors"].append(f"Failed to create blog post: {error_msg}")
             
             self.logger.info("AirthAgent workflow completed successfully")
             
