@@ -41,7 +41,8 @@ def get_auth_header():
     logger.info(f"Using Bearer token authentication with user: {WP_USER}")
     return {
         "User-Agent": "WordPress API Python Client",
-        "Authorization": f"Bearer {token}"
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json" 
     }
 
 def test_connection():

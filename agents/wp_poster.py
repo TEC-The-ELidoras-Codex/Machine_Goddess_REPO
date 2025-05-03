@@ -56,7 +56,7 @@ class WordPressAgent(BaseAgent):
     def _get_auth_header(self) -> Dict[str, str]:
         """
         Get the authorization header for WordPress API requests.
-        Uses Bearer token authentication which works with WordPress.com sites.
+        Tries multiple WordPress authentication methods.
         
         Returns:
             Dictionary containing the Authorization header
@@ -65,8 +65,10 @@ class WordPressAgent(BaseAgent):
             self.logger.error("Cannot create auth header: WordPress credentials not configured")
             return {}
             
-        # For WordPress.com sites, use Bearer token authentication
-        # (Convert to lowercase and remove spaces as discovered in testing)
+        # Convert username to lowercase for consistency
+        username = self.wp_user.lower()
+        
+        # Use bearer token authentication (removing spaces)
         token = self.wp_app_pass.replace(' ', '')
         
         self.logger.debug(f"Generated Bearer token auth for WordPress API")
@@ -74,6 +76,72 @@ class WordPressAgent(BaseAgent):
             "User-Agent": "WordPress API Python Client",
             "Authorization": f"Bearer {token}"
         }
+    
+    def _try_multiple_auth_methods(self, method: str, url: str, data: Dict = None) -> requests.Response:
+        """
+        Try multiple authentication methods for WordPress API.
+        
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            url: API URL to request
+            data: Data to send (for POST/PUT)
+            
+        Returns:
+            Response from the successful authentication method or the last attempted response
+        """
+        # Authentication methods to try in order
+        auth_methods = [
+            {
+                "name": "Bearer token",
+                "headers": {
+                    **self._get_auth_header(),
+                    "Content-Type": "application/json"
+                }
+            },
+            {
+                "name": "Basic auth with spaces",
+                "auth": (self.wp_user.lower(), self.wp_app_pass)
+            },
+            {
+                "name": "Basic auth without spaces",
+                "auth": (self.wp_user.lower(), self.wp_app_pass.replace(' ', ''))
+            }
+        ]
+        
+        last_response = None
+        for method_info in auth_methods:
+            try:
+                self.logger.debug(f"Trying authentication method: {method_info['name']}")
+                
+                kwargs = {}
+                if "headers" in method_info:
+                    kwargs["headers"] = method_info["headers"]
+                if "auth" in method_info:
+                    kwargs["auth"] = method_info["auth"]
+                
+                if data:
+                    kwargs["json"] = data
+                    
+                # Ensure proper Content-Type for requests with data
+                if data and "headers" in kwargs:
+                    kwargs["headers"]["Content-Type"] = "application/json"
+                elif data:
+                    kwargs["headers"] = {"Content-Type": "application/json"}
+                
+                # Make the request
+                response = requests.request(method, url, **kwargs)
+                last_response = response
+                
+                # If successful, return the response
+                if response.status_code in [200, 201]:
+                    self.logger.debug(f"Authentication method {method_info['name']} succeeded")
+                    return response
+                    
+            except Exception as e:
+                self.logger.error(f"Error with authentication method {method_info['name']}: {e}")
+        
+        # If we get here, none of the authentication methods succeeded
+        return last_response
     
     def get_categories(self) -> Dict[str, Any]:
         """
