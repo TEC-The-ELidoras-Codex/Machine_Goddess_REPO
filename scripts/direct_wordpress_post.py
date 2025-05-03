@@ -29,21 +29,18 @@ WP_APP_PASS = os.getenv("WP_APP_PASS", "")  # With spaces for Bearer token
 
 def get_auth_header():
     """
-    Get the authorization header for WordPress API requests using Bearer token.
+    Get the authorization header for WordPress API requests.
     
     Returns:
         Dictionary containing the Authorization header
     """
-    # For WordPress.com sites, use Bearer token authentication
-    # Remove spaces from application password for Bearer token
-    token = WP_APP_PASS.replace(' ', '')
+    # Use the authentication method that worked in our comprehensive test
+    # For standard WordPress REST API, Basic Auth with username and password with spaces
+    credentials = f"{WP_USER}:{WP_APP_PASS}"
+    token = b64encode(credentials.encode()).decode()
     
-    logger.info(f"Using Bearer token authentication with user: {WP_USER}")
-    return {
-        "User-Agent": "WordPress API Python Client",
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json" 
-    }
+    logger.info(f"Using Basic Auth with username: {WP_USER}")
+    return {"Authorization": f"Basic {token}"}
 
 def test_connection():
     """

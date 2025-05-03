@@ -56,7 +56,7 @@ class WordPressAgent(BaseAgent):
     def _get_auth_header(self) -> Dict[str, str]:
         """
         Get the authorization header for WordPress API requests.
-        Tries multiple WordPress authentication methods.
+        Uses Basic Authentication that works with WordPress.com sites.
         
         Returns:
             Dictionary containing the Authorization header
@@ -68,14 +68,12 @@ class WordPressAgent(BaseAgent):
         # Convert username to lowercase for consistency
         username = self.wp_user.lower()
         
-        # Use bearer token authentication (removing spaces)
-        token = self.wp_app_pass.replace(' ', '')
+        # Use Basic Authentication with username and password with spaces
+        credentials = f"{username}:{self.wp_app_pass}"
+        token = b64encode(credentials.encode()).decode()
         
-        self.logger.debug(f"Generated Bearer token auth for WordPress API")
-        return {
-            "User-Agent": "WordPress API Python Client",
-            "Authorization": f"Bearer {token}"
-        }
+        self.logger.debug(f"Generated Basic Auth token for WordPress API")
+        return {"Authorization": f"Basic {token}"}
     
     def _try_multiple_auth_methods(self, method: str, url: str, data: Dict = None) -> requests.Response:
         """
