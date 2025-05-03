@@ -10,6 +10,7 @@ import json
 import requests
 from base64 import b64encode
 from datetime import datetime
+from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(
@@ -18,22 +19,30 @@ logging.basicConfig(
 )
 logger = logging.getLogger("DirectWP")
 
-# WordPress credentials - hardcoded for testing, should be moved to .env in production
-# These values are taken from your existing .env file
-WP_SITE_URL = "https://elidorascodex.com"
-WP_USER = "elidorascodex_admin"
-WP_APP_PASS = "i6i(mY&q2+s_My*"
+# Load environment variables from .env
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', '.env'))
+
+# Get WordPress credentials from environment
+WP_SITE_URL = os.getenv("WP_SITE_URL", "https://elidorascodex.com")
+WP_USER = os.getenv("WP_USER", "").lower()  # Convert to lowercase for consistency
+WP_APP_PASS = os.getenv("WP_APP_PASS", "")  # With spaces for Bearer token
 
 def get_auth_header():
     """
-    Get the authorization header for WordPress API requests.
+    Get the authorization header for WordPress API requests using Bearer token.
     
     Returns:
         Dictionary containing the Authorization header
     """
-    credentials = f"{WP_USER}:{WP_APP_PASS}"
-    token = b64encode(credentials.encode()).decode()
-    return {"Authorization": f"Basic {token}"}
+    # For WordPress.com sites, use Bearer token authentication
+    # Remove spaces from application password for Bearer token
+    token = WP_APP_PASS.replace(' ', '')
+    
+    logger.info(f"Using Bearer token authentication with user: {WP_USER}")
+    return {
+        "User-Agent": "WordPress API Python Client",
+        "Authorization": f"Bearer {token}"
+    }
 
 def test_connection():
     """

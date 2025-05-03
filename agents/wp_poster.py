@@ -56,7 +56,7 @@ class WordPressAgent(BaseAgent):
     def _get_auth_header(self) -> Dict[str, str]:
         """
         Get the authorization header for WordPress API requests.
-        Specifically handles WordPress.com application passwords.
+        Uses Bearer token authentication which works with WordPress.com sites.
         
         Returns:
             Dictionary containing the Authorization header
@@ -65,11 +65,15 @@ class WordPressAgent(BaseAgent):
             self.logger.error("Cannot create auth header: WordPress credentials not configured")
             return {}
             
-        # Handle application passwords with spaces (don't strip spaces for WordPress.com)
-        credentials = f"{self.wp_user}:{self.wp_app_pass}"
-        token = b64encode(credentials.encode()).decode()
+        # For WordPress.com sites, use Bearer token authentication
+        # (Convert to lowercase and remove spaces as discovered in testing)
+        token = self.wp_app_pass.replace(' ', '')
         
-        return {"Authorization": f"Basic {token}"}
+        self.logger.debug(f"Generated Bearer token auth for WordPress API")
+        return {
+            "User-Agent": "WordPress API Python Client",
+            "Authorization": f"Bearer {token}"
+        }
     
     def get_categories(self) -> Dict[str, Any]:
         """
@@ -194,10 +198,15 @@ class WordPressAgent(BaseAgent):
         try:
             # Prepare API request
             url = f"{self.api_base_url}/posts"
+            
+            # Get authentication headers - using Bearer token auth that worked for categories
             headers = {
                 **self._get_auth_header(),
                 "Content-Type": "application/json"
             }
+            
+            # Log headers for debugging (without sensitive info)
+            self.logger.debug(f"Using headers: {', '.join(headers.keys())}")
             
             # Prepare post data
             post_data = {
@@ -219,6 +228,15 @@ class WordPressAgent(BaseAgent):
             # Make the API request
             self.logger.info(f"Creating WordPress post: '{title}'")
             response = requests.post(url, headers=headers, json=post_data)
+            
+            # Log more details if there's an error
+            if response.status_code != 201:
+                self.logger.error(f"Post creation failed with status {response.status_code}: {response.text[:200]}")
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}: {response.text[:200]}"
+                }
+                
             response.raise_for_status()
             
             post_data = response.json()
