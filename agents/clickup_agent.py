@@ -53,7 +53,7 @@ class ClickUpAgent(BaseAgent):
             self.logger.error("Cannot create auth headers: ClickUp API token not configured")
             return {}
             
-        # ClickUp API expects just the token without Bearer prefix
+        # ClickUp API expects just the token in the header
         return {
             "Authorization": self.api_token,
             "Content-Type": "application/json"
