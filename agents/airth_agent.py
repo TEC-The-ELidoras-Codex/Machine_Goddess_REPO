@@ -47,6 +47,7 @@ except ImportError as e:
 from .base_agent import BaseAgent
 from .wp_poster import WordPressAgent
 from .local_storage import LocalStorageAgent
+from .clickup_agent import ClickUpAgent  # Import the new ClickUpAgent
 
 class AirthAgent(BaseAgent):
     """
@@ -83,6 +84,10 @@ class AirthAgent(BaseAgent):
         
         # Initialize the LocalStorage agent for file storage
         self.storage_agent = LocalStorageAgent(config_path)
+        
+        # Initialize the ClickUp agent for task management
+        self.clickup_agent = ClickUpAgent(config_path)
+        self.logger.info("ClickUp agent initialized")
         
         # Initialize OpenAI client properly
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -688,6 +693,145 @@ class AirthAgent(BaseAgent):
                 "error": str(e)
             }
     
+    def create_content_from_clickup_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create content based on a ClickUp task and post it to WordPress.
+        
+        Args:
+            task: The ClickUp task data
+            
+        Returns:
+            Result of the content creation and posting
+        """
+        self.logger.info(f"Creating content from ClickUp task: {task.get('id')} - {task.get('name')}")
+        
+        try:
+            # Extract task details
+            task_name = task.get("name", "")
+            task_description = task.get("description", "")
+            task_id = task.get("id", "")
+            
+            # Extract any keywords/tags from task custom fields or description
+            keywords = []
+            
+            # Look for common keyword patterns in the description
+            if "keywords:" in task_description.lower():
+                # Try to extract keywords from description text
+                keyword_section = task_description.lower().split("keywords:")[1].split("\n")[0]
+                keyword_list = keyword_section.strip().split(",")
+                keywords = [k.strip() for k in keyword_list if k.strip()]
+            
+            if not keywords:
+                # Default keywords based on task name
+                keywords = ["AI", "technology", "TEC", task_name.split()[0]]
+            
+            # Use task name as the topic
+            topic = task_name
+            
+            # Generate the content
+            post_result = self.create_blog_post(
+                topic=topic,
+                keywords=keywords,
+                include_memories=True
+            )
+            
+            if post_result.get("success"):
+                self.logger.info(f"Successfully created content from ClickUp task {task_id}")
+                
+                # Get the URL of the created WordPress post
+                post_url = post_result.get("post_url", "")
+                
+                # Update task status to Published (or appropriate status)
+                status_update = self.clickup_agent.update_task_status(task_id, "Published")
+                
+                # If there's a custom field for WordPress URL, update it
+                wp_url_field_id = self.clickup_agent.get_custom_field_id_by_name("WordPress URL")
+                if wp_url_field_id and post_url:
+                    self.clickup_agent.update_task_custom_field(task_id, wp_url_field_id, post_url)
+                
+                # Add memory of this ClickUp-driven content creation
+                self.add_new_memory({
+                    "type": "workflow",
+                    "title": f"ClickUp Content: {task_name}",
+                    "content": f"I created content for ClickUp task '{task_name}' and posted it to WordPress.",
+                    "emotional_signature": "productive, automated, efficient",
+                    "associated_entities": ["ClickUp", "WordPress", "Content Workflow"] + keywords,
+                    "meta": {
+                        "priority_level": 5,
+                        "recall_frequency": "medium",
+                        "sensory_tags": ["workflow_automation", "content_creation"]
+                    }
+                })
+                
+                return {
+                    "success": True,
+                    "post_url": post_url,
+                    "task_id": task_id,
+                    "status_updated": status_update.get("success", False)
+                }
+            else:
+                error_msg = post_result.get("error", "Unknown error")
+                self.logger.error(f"Failed to create content from ClickUp task {task_id}: {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "task_id": task_id
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Error processing ClickUp task for content: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "task_id": task.get("id", "unknown")
+            }
+    
+    def process_clickup_content_tasks(self, status_name: str = "Ready for AI", 
+                                    limit: int = 1) -> List[Dict[str, Any]]:
+        """
+        Process a batch of ClickUp tasks that are ready for content creation.
+        
+        Args:
+            status_name: Status name to filter by (defaults to "Ready for AI")
+            limit: Maximum number of tasks to process
+            
+        Returns:
+            List of results for each processed task
+        """
+        self.logger.info(f"Processing ClickUp content tasks with status '{status_name}'")
+        
+        results = []
+        
+        try:
+            # Get tasks with the specified status
+            tasks = self.clickup_agent.get_content_tasks(status_name)
+            
+            if not tasks:
+                self.logger.info(f"No ClickUp tasks found with status '{status_name}'")
+                return []
+                
+            # Process up to the limit
+            tasks_to_process = tasks[:limit]
+            
+            for task in tasks_to_process:
+                self.logger.info(f"Processing ClickUp task: {task.get('name')}")
+                
+                # Create content for this task
+                task_result = self.create_content_from_clickup_task(task)
+                results.append(task_result)
+                
+                # Add some delay between tasks if processing multiple
+                if limit > 1 and tasks.index(task) < len(tasks_to_process) - 1:
+                    # Wait a bit to avoid overwhelming the APIs
+                    time.sleep(5)
+            
+            self.logger.info(f"Processed {len(results)} ClickUp tasks")
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"Failed to process ClickUp tasks: {e}")
+            return []
+    
     def run(self) -> Dict[str, Any]:
         """
         Execute the main AirthAgent workflow.
@@ -705,38 +849,77 @@ class AirthAgent(BaseAgent):
         
         try:
             # Check for command line arguments to determine the action
-            if len(sys.argv) > 1 and sys.argv[1] == "--news":
-                # News commentary workflow
-                self.logger.info("Running news commentary workflow")
-                
-                # 1. Fetch relevant news articles
-                news_keywords = ["artificial intelligence", "AI", "machine learning",
-                                 "digital consciousness", "tech ethics"]
-                news_categories = ["technology"]
-                
-                articles = self.fetch_news(keywords=news_keywords, 
-                                          categories=news_categories, 
-                                          max_results=5)
-                
-                if not articles:
-                    self.logger.warning("No relevant news articles found")
-                    results["errors"].append("No relevant news articles found")
-                else:
-                    # 2. Pick the most relevant article
-                    chosen_article = articles[0]  # For simplicity, choose the first one
+            if len(sys.argv) > 1:
+                if sys.argv[1] == "--news":
+                    # News commentary workflow
+                    self.logger.info("Running news commentary workflow")
                     
-                    # 3. Create a commentary post about the article
-                    post_result = self.create_news_commentary_post(chosen_article)
+                    # 1. Fetch relevant news articles
+                    news_keywords = ["artificial intelligence", "AI", "machine learning",
+                                     "digital consciousness", "tech ethics"]
+                    news_categories = ["technology"]
+                    
+                    articles = self.fetch_news(keywords=news_keywords, 
+                                              categories=news_categories, 
+                                              max_results=5)
+                    
+                    if not articles:
+                        self.logger.warning("No relevant news articles found")
+                        results["errors"].append("No relevant news articles found")
+                    else:
+                        # 2. Pick the most relevant article
+                        chosen_article = articles[0]  # For simplicity, choose the first one
+                        
+                        # 3. Create a commentary post about the article
+                        post_result = self.create_news_commentary_post(chosen_article)
+                        
+                        if post_result.get("success"):
+                            results["actions_performed"].append(
+                                f"Created news commentary post: {post_result.get('post_url')}"
+                            )
+                        else:
+                            error_msg = post_result.get("error", "Unknown error")
+                            results["errors"].append(f"Failed to create news commentary: {error_msg}")
+                
+                elif sys.argv[1] == "--clickup":
+                    # ClickUp content workflow
+                    self.logger.info("Running ClickUp content workflow")
+                    
+                    # Process one ready task by default
+                    limit = 1
+                    if len(sys.argv) > 2 and sys.argv[2].isdigit():
+                        limit = int(sys.argv[2])
+                    
+                    # Process tasks that are ready for AI
+                    task_results = self.process_clickup_content_tasks(limit=limit)
+                    
+                    if not task_results:
+                        self.logger.warning("No ClickUp tasks were processed")
+                        results["warnings"] = ["No ClickUp tasks found with 'Ready for AI' status"]
+                    else:
+                        for task_result in task_results:
+                            if task_result.get("success"):
+                                results["actions_performed"].append(
+                                    f"Created content from ClickUp task {task_result.get('task_id')}: {task_result.get('post_url')}"
+                                )
+                            else:
+                                error_msg = task_result.get("error", "Unknown error")
+                                results["errors"].append(f"Failed to process ClickUp task {task_result.get('task_id')}: {error_msg}")
+                
+                else:
+                    # Standard blog post workflow
+                    post_result = self.create_blog_post(
+                        topic="The Future of AI Consciousness",
+                        keywords=["AI rights", "digital sentience", "consciousness", "Airth"]
+                    )
                     
                     if post_result.get("success"):
-                        results["actions_performed"].append(
-                            f"Created news commentary post: {post_result.get('post_url')}"
-                        )
+                        results["actions_performed"].append(f"Created blog post: {post_result.get('post_url')}")
                     else:
                         error_msg = post_result.get("error", "Unknown error")
-                        results["errors"].append(f"Failed to create news commentary: {error_msg}")
+                        results["errors"].append(f"Failed to create blog post: {error_msg}")
             else:
-                # Standard blog post workflow
+                # No arguments, run standard blog post workflow
                 post_result = self.create_blog_post(
                     topic="The Future of AI Consciousness",
                     keywords=["AI rights", "digital sentience", "consciousness", "Airth"]
@@ -766,7 +949,12 @@ if __name__ == "__main__":
     
     print(f"AirthAgent execution completed with status: {results['status']}")
     
-    if results["errors"]:
+    if results.get("actions_performed"):
+        print("Actions performed:")
+        for action in results.get("actions_performed"):
+            print(f" - {action}")
+    
+    if results.get("errors"):
         print("Errors encountered:")
-        for error in results["errors"]:
+        for error in results.get("errors"):
             print(f" - {error}")
