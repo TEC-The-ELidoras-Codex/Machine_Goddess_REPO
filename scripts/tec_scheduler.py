@@ -17,7 +17,6 @@ import argparse
 import logging
 import json
 import random
-import schedule
 from datetime import datetime, timedelta
 from pathlib import Path
 import subprocess
@@ -49,6 +48,11 @@ load_dotenv(os.path.join(project_root, 'config', '.env'))
 # Get automation settings
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "300"))  # Default: 5 minutes
 DEBUG_MODE = os.getenv("DEBUG_MODE", "true").lower() == "true"
+
+# News categories for rotation (in priority order)
+NEWS_CATEGORIES = ["tech", "science", "digital_rights", "crypto", "sustainability", "business", "culture", "policy"]
+# Lower priority categories that will be used less frequently
+OCCASIONAL_CATEGORIES = ["gaming", "sports"]
 
 def run_task(task_name, *args):
     """
@@ -99,21 +103,66 @@ def run_task(task_name, *args):
         
         if process.returncode == 0:
             logger.info(f"Task {task_name} completed successfully")
+            return True, stdout
         else:
             logger.error(f"Task {task_name} failed with return code {process.returncode}")
+            return False, stderr
     
     except Exception as e:
         logger.error(f"Error running task {task_name}: {e}")
+        return False, str(e)
+
+def get_daily_news_category():
+    """
+    Get a category for the daily news using a weighted selection based on the day of the week.
+    More important categories have higher chances of being selected.
+    
+    Returns:
+        Selected category name
+    """
+    today = datetime.now()
+    day_of_week = today.weekday()  # 0=Monday, 6=Sunday
+    
+    # Use different category selection strategies based on the day of the week
+    if day_of_week < 5:  # Weekday: focus on main tech topics
+        # 80% chance to select from main categories, 20% chance for occasional categories
+        if random.random() < 0.8:
+            # Weight selection based on position in the list (first items have higher weight)
+            weights = [max(5, 10 - i) for i in range(len(NEWS_CATEGORIES))]
+            return random.choices(NEWS_CATEGORIES, weights=weights, k=1)[0]
+        else:
+            return random.choice(OCCASIONAL_CATEGORIES)
+    else:  # Weekend: more variety
+        # 60% chance to select from main categories, 40% chance for occasional categories
+        if random.random() < 0.6:
+            return random.choice(NEWS_CATEGORIES)
+        else:
+            return random.choice(OCCASIONAL_CATEGORIES)
 
 def schedule_daily_news():
     """Run the daily news automation task."""
     logger.info("Running scheduled daily news task")
     
     # Randomly select a geo-region for variety (improves SEO by targeting different regions)
-    geo_regions = ["US", "UK", "CA", "AU"]
-    selected_region = random.choice(geo_regions)
+    geo_regions = ["US", "UK", "CA", "AU", "IN", "DE", "FR"]
+    # Higher weight for US region (50% chance)
+    weights = [5, 2, 2, 2, 1, 1, 1]
+    selected_region = random.choices(geo_regions, weights=weights, k=1)[0]
     
-    run_task("news", "--geo", selected_region)
+    # Get a category based on the day
+    selected_category = get_daily_news_category()
+    
+    logger.info(f"Selected region {selected_region} and category {selected_category} for today's news")
+    
+    # Run the daily news automation with both geo-targeting and category
+    success, output = run_task("news", "--geo", selected_region, "--category", selected_category)
+    
+    # If first attempt fails, try with a different category
+    if not success:
+        logger.warning(f"First news attempt with category {selected_category} failed, trying with tech category")
+        return run_task("news", "--geo", selected_region, "--category", "tech")
+    
+    return success, output
 
 def schedule_crypto_news():
     """Run the crypto news automation task."""
@@ -128,12 +177,12 @@ def schedule_crypto_news():
     ]
     selected_coins = random.choice(coin_groups)
     
-    run_task("crypto", "--coins", selected_coins)
+    return run_task("crypto", "--coins", selected_coins)
 
 def schedule_clickup_tasks():
     """Process ready tasks from ClickUp."""
     logger.info("Running scheduled ClickUp task processing")
-    run_task("clickup")
+    return run_task("clickup")
 
 def init_scheduler():
     """Initialize the task scheduler with predefined schedules."""
@@ -158,8 +207,8 @@ def init_scheduler():
     # If in debug mode, add more frequent test tasks
     if DEBUG_MODE:
         logger.info("Debug mode enabled - adding test tasks")
-        # Example of a frequent task for testing
-        # schedule.every(30).minutes.do(lambda: logger.info("Debug heartbeat - scheduler is running"))
+        # Add a heartbeat log message every 30 minutes
+        schedule.every(30).minutes.do(lambda: logger.info("Debug heartbeat - scheduler is running"))
 
 def run_scheduler():
     """Run the scheduler main loop."""
@@ -275,11 +324,15 @@ if __name__ == "__main__":
     parser.add_argument("--run-now", type=str, help="Run a specific task immediately (news, crypto, clickup)")
     parser.add_argument("--create-windows-task", action="store_true", help="Create a Windows scheduled task for this scheduler")
     parser.add_argument("--list-tasks", action="store_true", help="Show scheduled tasks")
+    parser.add_argument("--category", type=str, help="Specify a category for the news task (only used with --run-now news)")
     
     args = parser.parse_args()
     
     if args.run_now:
-        run_task(args.run_now)
+        if args.run_now == "news" and args.category:
+            run_task(args.run_now, "--category", args.category)
+        else:
+            run_task(args.run_now)
     elif args.create_windows_task:
         create_windows_scheduled_task()
     elif args.list_tasks:

@@ -511,7 +511,7 @@ class AirthAgent(BaseAgent):
         
         Args:
             keywords: List of keywords to search for (OR relationship)
-            categories: List of news categories to filter by
+            categories: List of categories to filter by
             country: Country code to filter news by
             language: Language code to filter news by (default: English)
             max_results: Maximum number of results to return
@@ -527,11 +527,10 @@ class AirthAgent(BaseAgent):
             # NewsData.io API endpoint
             url = "https://newsdata.io/api/1/news"
             
-            # Prepare parameters
+            # Prepare parameters - NewsData.io only accepts up to 10 results per request
             params = {
                 "apikey": self.newsdata_api_key,
-                "language": language,
-                "size": max_results  # Number of results to return
+                "language": language
             }
             
             # Add optional parameters if provided
@@ -559,7 +558,7 @@ class AirthAgent(BaseAgent):
                 self.logger.warning("No news articles found for the given criteria")
                 return []
                 
-            # Process the articles
+            # Process the articles, limiting to max_results
             articles = []
             for article in data.get("results", [])[:max_results]:
                 # Filter out articles without important fields
